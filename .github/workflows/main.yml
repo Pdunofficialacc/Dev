@@ -1,0 +1,45 @@
+name: SSH VPS
+
+on: [push, workflow_dispatch]
+
+jobs:
+  build:
+    runs-on: ubuntu-20.04
+
+    steps:
+    - name: Install dependencies
+      run: |
+        sudo apt-get update -y
+        sudo apt-get install -y openssh-server curl wget net-tools python3
+
+    - name: Configure SSH root/dev
+      run: |
+        sudo mkdir -p /run/sshd
+        echo "root:dev" | sudo chpasswd
+        sudo sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config
+        sudo sed -i 's/#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config
+        sudo sed -i 's/PasswordAuthentication no/PasswordAuthentication yes/' /etc/ssh/sshd_config
+        sudo systemctl restart sshd || sudo service ssh restart
+
+    - name: Install ngrok
+      run: |
+        curl -s https://ngrok-agent.s3.amazonaws.com/ngrok.asc | sudo tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null
+        echo "deb https://ngrok-agent.s3.amazonaws.com buster main" | sudo tee /etc/apt/sources.list.d/ngrok.list
+        sudo apt-get update -y
+        sudo apt-get install -y ngrok
+
+    - name: Auth ngrok
+      run: ngrok config add-authtoken 3Jrwa91Fa0w4BpqnWdIAr2TNfFB_4G4vnYDy2oFkdoRMBtQUb
+
+    - name: Create SSH Tunnel
+      run: |
+        nohup ngrok tcp 22 --log=stdout > /tmp/ngrok.log 2>&1 &
+        sleep 10
+        echo "======================================"
+        curl -s http://localhost:4040/api/tunnels | python3 -c "import sys,json; d=json.load(sys.stdin); [print('TCP:', t['public_url']) for t in d['tunnels']]"
+        echo "======================================"
+
+    - name: Keep alive
+      run: |
+        echo "SSH ready: root / dev"
+        sleep 21600
